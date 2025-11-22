@@ -7,8 +7,8 @@ __pycache__/
 checkpoints/
 data/
 
-# Generated images (optional - can be committed for demo)
-# *.png
+# Generated images
+*.png
 
 # IDE
 .vscode/
