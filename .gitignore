@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Training outputs
+checkpoints/
+data/
+
+# Generated images (optional - can be committed for demo)
+# *.png
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

@@ -29,13 +29,91 @@ TinyDiffusion 学習スクリプト / Training Script
 
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import os
 import argparse
+import random
 
 from tiny_diffusion import SimpleUNet, DiffusionModel, diffusion_loss
+
+
+# =============================================================================
+# 合成データセット / Synthetic Dataset
+# =============================================================================
+# 【日本語】
+# MNISTがダウンロードできない場合や、より単純な実験をしたい場合に使用
+# シンプルな図形（四角形、円、線）を生成します
+#
+# 【English】
+# Used when MNIST cannot be downloaded or for simpler experiments
+# Generates simple shapes (squares, circles, lines)
+# =============================================================================
+
+class SyntheticShapesDataset(Dataset):
+    """
+    合成図形データセット / Synthetic Shapes Dataset
+
+    【日本語】
+    シンプルな図形を生成するデータセット：
+    - 四角形
+    - 円
+    - 対角線
+
+    【English】
+    Dataset that generates simple shapes:
+    - Squares
+    - Circles
+    - Diagonal lines
+    """
+
+    def __init__(self, size=10000, image_size=28):
+        self.size = size
+        self.image_size = image_size
+
+    def __len__(self):
+        return self.size
+
+    def __getitem__(self, idx):
+        img = torch.zeros(1, self.image_size, self.image_size)
+
+        shape_type = random.randint(0, 2)
+
+        if shape_type == 0:
+            # 四角形 / Square
+            x = random.randint(2, self.image_size - 12)
+            y = random.randint(2, self.image_size - 12)
+            size = random.randint(5, 10)
+            img[0, y:y+size, x:x+size] = 1.0
+
+        elif shape_type == 1:
+            # 円（近似）/ Circle (approximation)
+            cx = random.randint(7, self.image_size - 7)
+            cy = random.randint(7, self.image_size - 7)
+            r = random.randint(3, 6)
+            for i in range(self.image_size):
+                for j in range(self.image_size):
+                    if (i - cy) ** 2 + (j - cx) ** 2 <= r ** 2:
+                        img[0, i, j] = 1.0
+
+        else:
+            # 対角線 / Diagonal line
+            thickness = random.randint(1, 3)
+            direction = random.randint(0, 1)
+            for i in range(self.image_size):
+                if direction == 0:
+                    j = i
+                else:
+                    j = self.image_size - 1 - i
+                for t in range(-thickness//2, thickness//2 + 1):
+                    if 0 <= j + t < self.image_size:
+                        img[0, i, j + t] = 1.0
+
+        # [-1, 1] に正規化 / Normalize to [-1, 1]
+        img = img * 2 - 1
+
+        return img, 0  # ラベルは使わないのでダミー / Dummy label
 
 
 def train(
@@ -45,7 +123,8 @@ def train(
     timesteps=1000,
     device='auto',
     save_dir='checkpoints',
-    sample_interval=5
+    sample_interval=5,
+    use_synthetic=False
 ):
     """
     Diffusionモデルを学習 / Train the Diffusion model
@@ -59,6 +138,7 @@ def train(
         device: 'auto', 'cuda', または 'cpu'
         save_dir: チェックポイント保存先
         sample_interval: サンプル画像を生成するエポック間隔
+        use_synthetic: 合成データを使用するか（MNISTの代わり）
 
     【English】
     Args:
@@ -69,6 +149,7 @@ def train(
         device: 'auto', 'cuda', or 'cpu'
         save_dir: Directory to save checkpoints
         sample_interval: Interval (epochs) to generate sample images
+        use_synthetic: Use synthetic data instead of MNIST
     """
 
     # =================================================================
@@ -81,26 +162,44 @@ def train(
     # =================================================================
     # データセット準備 / Prepare dataset
     # =================================================================
-    # 【日本語】
-    # MNISTは28x28のグレースケール画像（手書き数字0-9）
-    # シンプルで学習が速いので、教育に最適です
-    #
-    # 【English】
-    # MNIST is 28x28 grayscale images (handwritten digits 0-9)
-    # Simple and fast to train, perfect for education
+    if use_synthetic:
+        # 【日本語】
+        # 合成データセット：シンプルな図形（四角形、円、線）
+        # MNISTがダウンロードできない場合に便利
+        #
+        # 【English】
+        # Synthetic dataset: Simple shapes (squares, circles, lines)
+        # Useful when MNIST cannot be downloaded
 
-    print("\n--- Loading MNIST Dataset ---")
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5])  # [0,1] -> [-1,1]
-    ])
+        print("\n--- Using Synthetic Shapes Dataset ---")
+        dataset = SyntheticShapesDataset(size=10000, image_size=28)
+    else:
+        # 【日本語】
+        # MNISTは28x28のグレースケール画像（手書き数字0-9）
+        # シンプルで学習が速いので、教育に最適です
+        #
+        # 【English】
+        # MNIST is 28x28 grayscale images (handwritten digits 0-9)
+        # Simple and fast to train, perfect for education
 
-    dataset = datasets.MNIST(
-        root='./data',
-        train=True,
-        download=True,
-        transform=transform
-    )
+        print("\n--- Loading MNIST Dataset ---")
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5])  # [0,1] -> [-1,1]
+        ])
+
+        try:
+            dataset = datasets.MNIST(
+                root='./data',
+                train=True,
+                download=True,
+                transform=transform
+            )
+        except RuntimeError as e:
+            print(f"\nMNIST download failed: {e}")
+            print("Falling back to synthetic dataset...")
+            print("MNISTダウンロード失敗。合成データに切り替えます...\n")
+            dataset = SyntheticShapesDataset(size=10000, image_size=28)
 
     dataloader = DataLoader(
         dataset,
@@ -305,6 +404,8 @@ if __name__ == "__main__":
     parser.add_argument('--device', type=str, default='auto', help='Device (auto/cuda/cpu)')
     parser.add_argument('--save-dir', type=str, default='checkpoints', help='Save directory')
     parser.add_argument('--sample-interval', type=int, default=5, help='Sample generation interval')
+    parser.add_argument('--synthetic', action='store_true',
+                        help='Use synthetic shapes dataset / 合成図形データを使用')
 
     args = parser.parse_args()
 
@@ -319,5 +420,6 @@ if __name__ == "__main__":
         timesteps=args.timesteps,
         device=args.device,
         save_dir=args.save_dir,
-        sample_interval=args.sample_interval
+        sample_interval=args.sample_interval,
+        use_synthetic=args.synthetic
     )
