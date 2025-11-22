@@ -1,0 +1,17 @@
+# TinyDiffusion Dependencies / 依存パッケージ
+# ============================================
+
+# PyTorch - Deep learning framework / ディープラーニングフレームワーク
+# Install from https://pytorch.org for your specific CUDA version
+# CUDAバージョンに応じて https://pytorch.org からインストールしてください
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Matplotlib - Visualization / 可視化
+matplotlib>=3.5.0
+
+# NumPy - Numerical computing / 数値計算
+numpy>=1.21.0
+
+# tqdm - Progress bar (optional) / プログレスバー（オプション）
+tqdm>=4.60.0
